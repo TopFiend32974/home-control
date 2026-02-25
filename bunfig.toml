@@ -1,0 +1,16 @@
+[install.scopes]
+"@mycompany" = { registry = "https://npm.mycompany.internal", token = "$NPM_TOKEN" }
+
+[install]
+registry = "https://registry.npmjs.org"
+production = false
+
+[test]
+coverage = true
+coverageReporter = ["text","lcov"]
+coverageDir = "coverage"
+preload = ["./tests/setup.ts"]
+
+[bundle]
+outdir = "dist"
+target = "browser"
