@@ -6,6 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_PATH="$SCRIPT_DIR/agent.ts"
 AGENT_BIN_PATH="$SCRIPT_DIR/agent"
 ENV_FILE="$SCRIPT_DIR/.env"
+TARGET_USER="${SUDO_USER:-$(logname)}"
+TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null)"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
 
 show_help() {
     echo "Usage: sudo $0 [COMMAND] [ARGS]"
@@ -69,6 +72,11 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+if [ -z "$TARGET_UID" ]; then
+    echo "Error: Could not resolve target user uid for '$TARGET_USER'."
+    exit 1
+fi
+
 case "$1" in
     install)
         if ! check_media_dependencies; then
@@ -121,8 +129,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=$(logname)
+User=$TARGET_USER
 WorkingDirectory=$SCRIPT_DIR
+Environment="HOME=$TARGET_HOME"
+Environment="XDG_RUNTIME_DIR=/run/user/$TARGET_UID"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$TARGET_UID/bus"
 Environment="HUB_URL=$HUB_URL"
 $TLS_BYPASS_ENV
 ExecStart=/bin/bash -lc '$EXEC_START'
@@ -132,6 +143,12 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+
+        if [ ! -S "/run/user/$TARGET_UID/bus" ]; then
+            echo "Warning: '/run/user/$TARGET_UID/bus' is not available right now."
+            echo "Ensure user '$TARGET_USER' is logged into a desktop session, then restart the service:"
+            echo "  sudo ./agent-ctl.sh restart"
+        fi
 
         systemctl daemon-reload
         systemctl enable $SERVICE_NAME
