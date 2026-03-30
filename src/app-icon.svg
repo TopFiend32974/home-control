@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Media Control Center Icon</title>
+  <desc id="desc">Rounded square gradient icon with monitor and speaker glyph.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bg)" />
+  <rect x="52" y="64" width="112" height="86" rx="12" fill="none" stroke="#ffffff" stroke-width="14" />
+  <path d="M92 184h32" stroke="#ffffff" stroke-width="14" stroke-linecap="round" />
+  <path d="M80 198h56" stroke="#ffffff" stroke-width="14" stroke-linecap="round" />
+  <rect x="178" y="86" width="26" height="60" rx="10" fill="none" stroke="#ffffff" stroke-width="12" />
+  <path d="M214 96q16 14 0 28" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" />
+  <path d="M214 116q22 20 0 40" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" />
+</svg>

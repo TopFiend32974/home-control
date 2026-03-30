@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Play, Pause, SkipForward, SkipBack, Volume2, MonitorSpeaker, Loader2 } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import "./index.css";
@@ -75,8 +75,8 @@ export function App() {
       <div className="max-w-5xl mx-auto w-full relative z-10 flex flex-col gap-8">
         <header className="flex flex-col md:flex-row items-center justify-between gap-4 backdrop-blur-md bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800/50 shadow-2xl">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-linear-to-br from-indigo-500 to-cyan-500 rounded-2xl shadow-lg shadow-cyan-500/20">
-              <MonitorSpeaker className="w-8 h-8 text-white" />
+            <div className="w-14 h-14 rounded-2xl shadow-lg shadow-cyan-500/20 overflow-hidden">
+              <img src="/app-icon.svg" alt="Media Control Center icon" className="w-full h-full object-cover" />
             </div>
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-linear-to-r from-zinc-100 to-zinc-400">

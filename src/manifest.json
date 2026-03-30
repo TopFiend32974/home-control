@@ -2,13 +2,16 @@
   "name": "Media Control Hub",
   "short_name": "Media Hub",
   "description": "Cross-machine media control for Fedora devices.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#09090b",
   "theme_color": "#4f46e5",
   "icons": [
     {
-      "src": "logo.svg",
+      "src": "/app-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

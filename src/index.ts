@@ -14,6 +14,81 @@ type AgentState = {
   volume: string;
 };
 
+const LAN_ONLY = process.env.LAN_ONLY !== "false";
+const HOST = process.env.HOST ?? process.env.HOST_IP ?? "0.0.0.0";
+const PORT = Number(process.env.PORT ?? 3000);
+const TLS_ENABLED = process.env.TLS === "true";
+const TLS_KEY_PATH = process.env.TLS_KEY_PATH ?? "./certs/home-control-key.pem";
+const TLS_CERT_PATH = process.env.TLS_CERT_PATH ?? "./certs/home-control-cert.pem";
+
+function normalizeIp(address: string): string {
+  return address.startsWith("::ffff:") ? address.slice(7) : address;
+}
+
+function isPrivateIpv4(address: string): boolean {
+  const parts = address.split(".");
+  if (parts.length !== 4) return false;
+  const octets = parts.map((p) => Number.parseInt(p, 10));
+  if (octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
+
+  const a = octets[0] ?? -1;
+  const b = octets[1] ?? -1;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
+function isPrivateIp(address: string): boolean {
+  const ip = normalizeIp(address).toLowerCase();
+  if (isPrivateIpv4(ip)) return true;
+  if (ip === "::1") return true;
+  if (ip.startsWith("fc") || ip.startsWith("fd")) return true; // unique-local
+  if (ip.startsWith("fe8") || ip.startsWith("fe9") || ip.startsWith("fea") || ip.startsWith("feb")) {
+    return true; // link-local fe80::/10
+  }
+  return false;
+}
+
+function isPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+  return isPrivateIp(host);
+}
+
+function isAllowedClient(req: Request, server: ReturnType<typeof serve<WebSocketData>>): boolean {
+  if (!LAN_ONLY) return true;
+
+  const client = server.requestIP(req);
+  if (client?.address && isPrivateIp(client.address)) {
+    return true;
+  }
+
+  const hostname = new URL(req.url).hostname;
+  return isPrivateHost(hostname);
+}
+
+async function loadTlsConfig() {
+  if (!TLS_ENABLED) return undefined;
+
+  const keyFile = Bun.file(TLS_KEY_PATH);
+  const certFile = Bun.file(TLS_CERT_PATH);
+
+  if (!(await keyFile.exists()) || !(await certFile.exists())) {
+    throw new Error(
+      `TLS is enabled but certificate files are missing. Expected key at '${TLS_KEY_PATH}' and cert at '${TLS_CERT_PATH}'.`
+    );
+  }
+
+  return {
+    key: await keyFile.text(),
+    cert: await certFile.text(),
+  };
+}
+
 // Store active agents and their state
 const agents = new Map<string, { state: AgentState; ws: ServerWebSocket<WebSocketData> }>();
 // Store active web connections
@@ -27,7 +102,12 @@ function broadcastState() {
   }
 }
 
+const tls = await loadTlsConfig();
+
 const server = serve<WebSocketData>({
+  hostname: HOST,
+  port: PORT,
+  tls,
   routes: {
     "/": index,
     "/download/agent": async () => {
@@ -56,11 +136,20 @@ const server = serve<WebSocketData>({
         },
       });
     },
+    "/app-icon.svg": async () => {
+      return new Response(await Bun.file("./src/app-icon.svg").bytes(), {
+        headers: { "Content-Type": "image/svg+xml" },
+      });
+    },
   },
 
   async fetch(req, server) {
     const url = new URL(req.url);
     const path = url.pathname;
+
+    if (!isAllowedClient(req, server)) {
+      return new Response("Forbidden: LAN-only mode is enabled", { status: 403 });
+    }
 
     // Agent Websocket Upgrade
     if (path.startsWith("/ws/agent/")) {
@@ -86,8 +175,9 @@ const server = serve<WebSocketData>({
       });
     }
 
-    if (path === "/logo.svg") {
-      return new Response(await Bun.file("./src/logo.svg").bytes(), {
+    if (path === "/logo.svg" || path === "/app-icon.svg") {
+      const iconPath = path === "/app-icon.svg" ? "./src/app-icon.svg" : "./src/logo.svg";
+      return new Response(await Bun.file(iconPath).bytes(), {
         headers: { "Content-Type": "image/svg+xml" },
       });
     }
@@ -184,4 +274,20 @@ const server = serve<WebSocketData>({
   },
 });
 
-console.log(`🚀 Hub Server running at ${server.url}`);
+const mode = tls ? "https" : "http";
+console.log(
+  "⚙️ Runtime config:",
+  JSON.stringify(
+    {
+      host: HOST,
+      port: PORT,
+      lanOnly: LAN_ONLY,
+      tlsEnabled: TLS_ENABLED,
+      tlsKeyPath: TLS_KEY_PATH,
+      tlsCertPath: TLS_CERT_PATH,
+    },
+    null,
+    2
+  )
+);
+console.log(`🚀 Hub Server running at ${server.url} (${mode}, lanOnly=${LAN_ONLY})`);
