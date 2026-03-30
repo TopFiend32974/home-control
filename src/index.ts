@@ -30,52 +30,63 @@ function broadcastState() {
 const server = serve<WebSocketData>({
   routes: {
     "/": index,
-    "/manifest.json": manifest,
-    "/sw.js": async () => {
+  },
+
+  async fetch(req, server) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+
+    // Agent Websocket Upgrade
+    if (path.startsWith("/ws/agent/")) {
+      const id = path.split("/ws/agent/")[1] || "unknown";
+      if (server.upgrade(req, { data: { type: "agent", id } })) {
+        return;
+      }
+    }
+
+    // Web App Websocket Upgrade
+    if (path === "/ws/web") {
+      if (server.upgrade(req, { data: { type: "web" } })) {
+        return;
+      }
+    }
+
+    // Static / API Routes
+    if (path === "/manifest.json") return Response.json(manifest);
+    
+    if (path === "/sw.js") {
       return new Response(await Bun.file("./src/sw.js").bytes(), {
         headers: { "Content-Type": "application/javascript" },
       });
-    },
-    "/logo.svg": async () => {
+    }
+
+    if (path === "/logo.svg") {
       return new Response(await Bun.file("./src/logo.svg").bytes(), {
         headers: { "Content-Type": "image/svg+xml" },
       });
-    },
-    "/api/agents": async (req: Request) => {
+    }
+
+    if (path === "/api/agents") {
       return Response.json(Array.from(agents.values()).map(a => a.state));
-    },
-    "/download/agent": async () => {
+    }
+
+    if (path === "/download/agent") {
       return new Response(await Bun.file("./media-devices.tar.gz").bytes(), {
         headers: {
           "Content-Type": "application/gzip",
           "Content-Disposition": 'attachment; filename="media-devices.tar.gz"',
         },
       });
-    },
-    // Serve index.html for all other unmatched routes.
-    "/*": index,
-  },
-
-  async fetch(req, server) {
-    const url = new URL(req.url);
-
-    // Agent Websocket Upgrade
-    if (url.pathname.startsWith("/ws/agent/")) {
-      const id = url.pathname.split("/ws/agent/")[1] || "unknown";
-      if (server.upgrade(req, { data: { type: "agent", id } })) {
-        return; // do not return a Response
-      }
     }
 
-    // Web App Websocket Upgrade
-    if (url.pathname === "/ws/web") {
-      if (server.upgrade(req, { data: { type: "web" } })) {
-        return; // do not return a Response
-      }
+    // Serve frontend source files (e.g., frontend.tsx) – fallback for other files
+    const file = Bun.file(`./src${path}`);
+    if (await file.exists()) {
+      return new Response(file);
     }
-    
-    // Fallback if none routes match (should be caught by routes: { "/*": index } though)
-    return new Response("Not found", { status: 404 });
+
+    // Catch-all for SPA
+    return new Response(await Bun.file("./src/index.html").bytes(), { headers: { "Content-Type": "text/html" } });
   },
 
   websocket: {
