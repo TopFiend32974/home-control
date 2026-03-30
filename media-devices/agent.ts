@@ -1,12 +1,82 @@
 import { hostname } from "node:os";
 import { spawn } from "bun";
 
-const HUB_URL = process.env.HUB_URL || "ws://localhost:3000"; 
+function toWebSocketBaseUrl(input: string): string {
+  const trimmed = input.trim().replace(/\/+$/, "");
+  if (trimmed.startsWith("wss://") || trimmed.startsWith("ws://")) return trimmed;
+  if (trimmed.startsWith("https://")) return `wss://${trimmed.slice("https://".length)}`;
+  if (trimmed.startsWith("http://")) return `ws://${trimmed.slice("http://".length)}`;
+  return `ws://${trimmed}`;
+}
+
+const HUB_URL = toWebSocketBaseUrl(
+  process.env.HUB_URL || `ws://${process.env.HOST_IP || "localhost"}:${process.env.PORT || "3000"}`
+);
 const agentId = hostname();
 const WS_URL = `${HUB_URL}/ws/agent/${agentId}`;
+let socket: WebSocket;
 
-console.log(`Connecting to Hub at ${WS_URL}...`);
-let socket = new WebSocket(WS_URL);
+function connect(): void {
+  console.log(`Connecting to Hub at ${WS_URL}...`);
+  socket = new WebSocket(WS_URL);
+
+  socket.onopen = async () => {
+    console.log("Connected to Hub!");
+    updateVolumeState();
+  };
+
+  socket.onerror = (event) => {
+    console.error("WebSocket error:", event);
+  };
+
+  socket.onclose = () => {
+    console.log("Disconnected from Hub. Retrying in 5 seconds...");
+    setTimeout(connect, 5000);
+  };
+
+  // 1. Listen for commands FROM the Hub
+  socket.onmessage = async (event) => {
+    try {
+      const { action, value } = JSON.parse(event.data);
+      
+      switch (action) {
+        case "play-pause":
+          Bun.spawn(["playerctl", "play-pause"]);
+          break;
+        case "play":
+          Bun.spawn(["playerctl", "play"]);
+          break;
+        case "pause":
+          Bun.spawn(["playerctl", "pause"]);
+          break;
+        case "next":
+          Bun.spawn(["playerctl", "next"]);
+          break;
+        case "previous":
+          Bun.spawn(["playerctl", "previous"]);
+          break;
+        case "volume":
+          if (value !== undefined) {
+             Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", `${value}%`]);
+             setTimeout(updateVolumeState, 200);
+          }
+          break;
+        case "volume-up":
+          Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]);
+          setTimeout(updateVolumeState, 200);
+          break;
+        case "volume-down":
+          Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]);
+          setTimeout(updateVolumeState, 200);
+          break;
+      }
+    } catch (err) {
+      console.error("Error processing message:", err);
+    }
+  };
+}
+
+connect();
 
 // Function to get current volume
 async function getVolume(): Promise<string> {
@@ -30,57 +100,6 @@ async function updateVolumeState() {
     socket.send(JSON.stringify({ volume: vol }));
   }
 }
-
-socket.onopen = async () => {
-  console.log("Connected to Hub!");
-  updateVolumeState();
-};
-
-socket.onclose = () => {
-  console.log("Disconnected from Hub. Exiting.");
-  process.exit(1);
-};
-
-// 1. Listen for commands FROM the Hub
-socket.onmessage = async (event) => {
-  try {
-    const { action, value } = JSON.parse(event.data);
-    
-    switch (action) {
-      case "play-pause":
-        Bun.spawn(["playerctl", "play-pause"]);
-        break;
-      case "play":
-        Bun.spawn(["playerctl", "play"]);
-        break;
-      case "pause":
-        Bun.spawn(["playerctl", "pause"]);
-        break;
-      case "next":
-        Bun.spawn(["playerctl", "next"]);
-        break;
-      case "previous":
-        Bun.spawn(["playerctl", "previous"]);
-        break;
-      case "volume":
-        if (value !== undefined) {
-           Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", `${value}%`]);
-           setTimeout(updateVolumeState, 200);
-        }
-        break;
-      case "volume-up":
-        Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]);
-        setTimeout(updateVolumeState, 200);
-        break;
-      case "volume-down":
-        Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]);
-        setTimeout(updateVolumeState, 200);
-        break;
-    }
-  } catch (err) {
-    console.error("Error processing message:", err);
-  }
-};
 
 // 2. Push status TO the Hub (using playerctl's monitor mode)
 const monitor = Bun.spawn(["playerctl", "metadata", "--format", '{"status": "{{status}}", "title": "{{title}}"}', "--follow"], {

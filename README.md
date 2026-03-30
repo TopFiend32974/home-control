@@ -89,3 +89,23 @@ To verify env vars are loaded, check startup logs for `Runtime config` and confi
 - `port` matches `PORT`
 - `tlsEnabled` is `true`
 - `tlsKeyPath` and `tlsCertPath` point to existing files
+
+## Agent setup (no Bun required)
+
+The downloadable `media-devices.tar.gz` now includes a compiled `agent` binary so target PCs do not need Bun installed.
+
+On each target machine:
+
+```bash
+tar -xzf media-devices.tar.gz
+cd media-devices
+cp .env.example .env
+# edit .env with your hub HOST_IP/PORT/TLS values
+sudo ./agent-ctl.sh install
+sudo ./agent-ctl.sh logs
+```
+
+Notes:
+
+- If your hub uses HTTPS (`TLS=true`), agent-ctl will use `wss://...`.
+- For self-signed/internal certs, keep `HUB_INSECURE_TLS=true` in `.env` (or trust your local CA on that machine).
