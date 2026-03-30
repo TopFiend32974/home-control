@@ -31,6 +31,38 @@ resolve_hub_url() {
     fi
 }
 
+check_media_dependencies() {
+    local missing=()
+
+    if ! command -v playerctl >/dev/null 2>&1; then
+        missing+=("playerctl")
+    fi
+
+    if ! command -v wpctl >/dev/null 2>&1; then
+        missing+=("wpctl")
+    fi
+
+    if [ "${#missing[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    echo "Warning: Missing media dependencies: ${missing[*]}"
+    echo "Install on Fedora with:"
+    echo "  sudo dnf install playerctl wireplumber"
+    echo ""
+    echo "The agent service can run without these, but playback/volume control will be limited."
+
+    read -r -p "Continue install anyway? [y/N]: " continue_install
+    case "${continue_install,,}" in
+        y|yes) return 0 ;;
+        *)
+            echo "Install aborted. Install dependencies first, then rerun:"
+            echo "  sudo ./agent-ctl.sh install"
+            return 1
+            ;;
+    esac
+}
+
 # Check for root
 if [ "$EUID" -ne 0 ]; then
   echo "Error: Please run as root (sudo)"
@@ -39,6 +71,10 @@ fi
 
 case "$1" in
     install)
+        if ! check_media_dependencies; then
+            exit 1
+        fi
+
         # Extract IP from .env or ask
         if [ -f "$ENV_FILE" ]; then
             HUB_IP=$(awk -F= '/^HOST_IP=/{print $2}' "$ENV_FILE")

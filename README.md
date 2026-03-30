@@ -109,3 +109,5 @@ Notes:
 
 - If your hub uses HTTPS (`TLS=true`), agent-ctl will use `wss://...`.
 - For self-signed/internal certs, keep `HUB_INSECURE_TLS=true` in `.env` (or trust your local CA on that machine).
+- The agent now stays running even if `playerctl`/`wpctl` are missing, but media controls need those tools installed:
+  - Fedora: `sudo dnf install playerctl wireplumber`

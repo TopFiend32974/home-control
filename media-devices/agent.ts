@@ -1,5 +1,4 @@
 import { hostname } from "node:os";
-import { spawn } from "bun";
 
 function toWebSocketBaseUrl(input: string): string {
   const trimmed = input.trim().replace(/\/+$/, "");
@@ -15,6 +14,20 @@ const HUB_URL = toWebSocketBaseUrl(
 const agentId = hostname();
 const WS_URL = `${HUB_URL}/ws/agent/${agentId}`;
 let socket: WebSocket;
+const warnedCommands = new Set<string>();
+
+function runCommand(args: string[]): void {
+  try {
+    Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+  } catch (error) {
+    const key = args[0] ?? "unknown";
+    if (!warnedCommands.has(key)) {
+      warnedCommands.add(key);
+      console.warn(`Command '${key}' is unavailable. Install it on the agent machine for full media control.`);
+      console.warn(`Failed command: ${args.join(" ")}`);
+    }
+  }
+}
 
 function connect(): void {
   console.log(`Connecting to Hub at ${WS_URL}...`);
@@ -41,32 +54,32 @@ function connect(): void {
       
       switch (action) {
         case "play-pause":
-          Bun.spawn(["playerctl", "play-pause"]);
+          runCommand(["playerctl", "play-pause"]);
           break;
         case "play":
-          Bun.spawn(["playerctl", "play"]);
+          runCommand(["playerctl", "play"]);
           break;
         case "pause":
-          Bun.spawn(["playerctl", "pause"]);
+          runCommand(["playerctl", "pause"]);
           break;
         case "next":
-          Bun.spawn(["playerctl", "next"]);
+          runCommand(["playerctl", "next"]);
           break;
         case "previous":
-          Bun.spawn(["playerctl", "previous"]);
+          runCommand(["playerctl", "previous"]);
           break;
         case "volume":
           if (value !== undefined) {
-             Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", `${value}%`]);
+             runCommand(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", `${value}%`]);
              setTimeout(updateVolumeState, 200);
           }
           break;
         case "volume-up":
-          Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]);
+          runCommand(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"]);
           setTimeout(updateVolumeState, 200);
           break;
         case "volume-down":
-          Bun.spawn(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]);
+          runCommand(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"]);
           setTimeout(updateVolumeState, 200);
           break;
       }
@@ -102,27 +115,35 @@ async function updateVolumeState() {
 }
 
 // 2. Push status TO the Hub (using playerctl's monitor mode)
-const monitor = Bun.spawn(["playerctl", "metadata", "--format", '{"status": "{{status}}", "title": "{{title}}"}', "--follow"], {
-  stdout: "pipe",
-});
+function startMetadataMonitor(): void {
+  try {
+    const monitor = Bun.spawn(
+      ["playerctl", "metadata", "--format", '{"status": "{{status}}", "title": "{{title}}"}', "--follow"],
+      { stdout: "pipe", stderr: "ignore" }
+    );
 
-// Read the stdout stream and pipe it to the WebSocket
-(async () => {
-  const reader = monitor.stdout.getReader();
-  let buffer = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += new TextDecoder().decode(value);
-    
-    // Split on newlines as playerctl outputs one JSON object per line
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || ""; // Keep the last incomplete line
-    
-    for (const line of lines) {
-      if (line.trim() && socket.readyState === WebSocket.OPEN) {
-        socket.send(line);
+    (async () => {
+      const reader = monitor.stdout.getReader();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += new TextDecoder().decode(value);
+
+        // Split on newlines as playerctl outputs one JSON object per line
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.trim() && socket.readyState === WebSocket.OPEN) {
+            socket.send(line);
+          }
+        }
       }
-    }
+    })();
+  } catch {
+    console.warn("playerctl not available; metadata updates are disabled on this agent.");
   }
-})();
+}
+
+startMetadataMonitor();
