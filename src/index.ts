@@ -30,6 +30,32 @@ function broadcastState() {
 const server = serve<WebSocketData>({
   routes: {
     "/": index,
+    "/download/agent": async () => {
+      const archive = Bun.file("./media-devices.tar.gz");
+      if (!(await archive.exists())) {
+        return new Response("Agent package not found", { status: 404 });
+      }
+
+      return new Response(archive, {
+        headers: {
+          "Content-Type": "application/gzip",
+          "Content-Disposition": 'attachment; filename="media-devices.tar.gz"',
+        },
+      });
+    },
+    "/download/agent/": async () => {
+      const archive = Bun.file("./media-devices.tar.gz");
+      if (!(await archive.exists())) {
+        return new Response("Agent package not found", { status: 404 });
+      }
+
+      return new Response(archive, {
+        headers: {
+          "Content-Type": "application/gzip",
+          "Content-Disposition": 'attachment; filename="media-devices.tar.gz"',
+        },
+      });
+    },
   },
 
   async fetch(req, server) {
@@ -70,8 +96,13 @@ const server = serve<WebSocketData>({
       return Response.json(Array.from(agents.values()).map(a => a.state));
     }
 
-    if (path === "/download/agent") {
-      return new Response(await Bun.file("./media-devices.tar.gz").bytes(), {
+    if (path === "/download/agent" || path === "/download/agent/") {
+      const archive = Bun.file("./media-devices.tar.gz");
+      if (!(await archive.exists())) {
+        return new Response("Agent package not found", { status: 404 });
+      }
+
+      return new Response(archive, {
         headers: {
           "Content-Type": "application/gzip",
           "Content-Disposition": 'attachment; filename="media-devices.tar.gz"',
